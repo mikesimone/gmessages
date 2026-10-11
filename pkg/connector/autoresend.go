@@ -10,6 +10,7 @@ package connector
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,10 +24,18 @@ import (
 // already accepted them (RCS encryption hiccups, carrier errors), which the
 // bridge never reports back because the success status already went out.
 // Google Messages shows them with a red "!" and a Resend button. This taps
-// that button automatically: when a bridge-sent message (IsOutgoing) reaches
-// a retryable failed status, wait, re-check that it is still failed, and ask
-// the phone to resend it. One delay per attempt; no more after the last.
+// that button automatically: when one of our outgoing messages reaches a
+// retryable failed status within autoResendMaxAge of being sent, wait,
+// re-check that it is still failed, and ask the phone to resend it. One delay
+// per attempt; no more after the last.
+//
+// Not limited to IsOutgoing (bridge-sent) messages: the bridge often fails to
+// match its own sends to the phone's echo, and stores them as if typed on the
+// phone without that flag. Outgoing statuses only ever belong to our side, and
+// the age cap keeps old failures that resurface in a resync from being resent.
 var autoResendDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
+const autoResendMaxAge = time.Hour
 
 type autoResendState struct {
 	lock     sync.Mutex
@@ -49,8 +58,11 @@ func isRetryableFailure(status gmproto.MessageStatusType) bool {
 	}
 }
 
-func (gc *GMClient) noteOutgoingStatus(ctx context.Context, msgID networkid.MessageID, isOutgoing bool, status gmproto.MessageStatusType) {
-	if !isOutgoing {
+func (gc *GMClient) noteOutgoingStatus(ctx context.Context, msgID networkid.MessageID, sentAt time.Time, status gmproto.MessageStatusType) {
+	if !strings.HasPrefix(status.String(), "OUTGOING_") {
+		return
+	}
+	if isRetryableFailure(status) && time.Since(sentAt) > autoResendMaxAge {
 		return
 	}
 	st := &gc.autoResend
@@ -60,6 +72,12 @@ func (gc *GMClient) noteOutgoingStatus(ctx context.Context, msgID networkid.Mess
 		st.status = make(map[networkid.MessageID]gmproto.MessageStatusType)
 		st.attempts = make(map[networkid.MessageID]int)
 		st.pending = make(map[networkid.MessageID]bool)
+	}
+	if isSuccessfullySentStatus(status) && !st.pending[msgID] {
+		// Delivered: forget it so the maps stay small.
+		delete(st.status, msgID)
+		delete(st.attempts, msgID)
+		return
 	}
 	st.status[msgID] = status
 	if !isRetryableFailure(status) || st.pending[msgID] {
