@@ -1110,6 +1110,7 @@ func (m *MessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Port
 		result.ContinueMessageHandling = true
 		return result, nil
 	}
+	m.g.noteOutgoingStatus(ctx, existing[0].ID, existingMeta.IsOutgoing, newStatus)
 	reactionSyncEvt := &ReactionSyncEvent{Message: m.Message, g: m.g}
 	result.SubEvents = []bridgev2.RemoteEvent{reactionSyncEvt}
 	chatIDChanged := dbm[0].Room.ID != portal.ID

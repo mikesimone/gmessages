@@ -114,6 +114,16 @@ func (c *Client) DeleteMessage(ctx context.Context, messageID string) (*gmproto.
 	return typedResponse[*gmproto.DeleteMessageResponse](c.getSessionHandler().sendUserMessage(ctx, actionType, payload))
 }
 
+// ResendMessage asks the phone to retry a failed outgoing message, the same
+// as tapping "Resend" on it in Google Messages.
+func (c *Client) ResendMessage(ctx context.Context, messageID string) error {
+	payload := &gmproto.ResendMessageRequest{MessageID: messageID}
+	actionType := gmproto.ActionType_RESEND_MESSAGE
+
+	_, err := c.getSessionHandler().sendMessage(ctx, actionType, payload)
+	return err
+}
+
 func (c *Client) MarkRead(ctx context.Context, conversationID, messageID string) error {
 	payload := &gmproto.MessageReadRequest{ConversationID: conversationID, MessageID: messageID}
 	actionType := gmproto.ActionType_MESSAGE_READ

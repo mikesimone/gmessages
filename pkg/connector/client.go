@@ -74,6 +74,8 @@ type GMClient struct {
 	conversationMetaLock sync.Mutex
 
 	dmsByPhone map[string]*gmdb.DirectConversation
+
+	autoResend autoResendState
 	dmsByConv  map[networkid.PortalID]*gmdb.DirectConversation
 	dmsLock    sync.Mutex
 
